@@ -1,0 +1,124 @@
+# =============================================================================
+# Laravel 12 + Livewire 4 — .gitignore
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+/vendor
+/node_modules
+
+
+# -----------------------------------------------------------------------------
+# Build / compiled assets
+# -----------------------------------------------------------------------------
+/public/build
+/public/hot
+/public/storage
+
+
+# -----------------------------------------------------------------------------
+# Environment & secrets
+# -----------------------------------------------------------------------------
+.env
+.env.backup
+.env.production
+.env.*.local
+/auth.json
+/storage/*.key
+/storage/keys/
+
+
+# -----------------------------------------------------------------------------
+# Storage — logs
+# -----------------------------------------------------------------------------
+/storage/logs/
+# Si prefieres conservar la carpeta pero ignorar los archivos:
+# /storage/logs/*.log
+
+
+# -----------------------------------------------------------------------------
+# Storage — framework (caché, sesiones, vistas compiladas)
+# -----------------------------------------------------------------------------
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+
+
+# -----------------------------------------------------------------------------
+# Storage — archivos subidos por usuarios / datos de app
+# -----------------------------------------------------------------------------
+/storage/app/public/
+/storage/app/private/
+# Conserva la estructura de carpetas mediante los .gitkeep
+!/storage/app/public/.gitkeep
+!/storage/app/private/.gitkeep
+!/storage/framework/cache/.gitkeep
+!/storage/framework/sessions/.gitkeep
+!/storage/framework/testing/.gitkeep
+!/storage/framework/views/.gitkeep
+!/storage/logs/.gitkeep
+
+
+# -----------------------------------------------------------------------------
+# Livewire — caché de componentes (Livewire 4 Volt / Synthetic)
+# -----------------------------------------------------------------------------
+/storage/framework/livewire/
+!/storage/framework/livewire/.gitkeep
+
+
+# -----------------------------------------------------------------------------
+# Pail (log viewer de Laravel)
+# -----------------------------------------------------------------------------
+/storage/pail
+
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+/.phpunit.cache
+.phpunit.result.cache
+/coverage/
+/storage/framework/testing/
+
+
+# -----------------------------------------------------------------------------
+# IDEs y editores
+# -----------------------------------------------------------------------------
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+.phpactor.json
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+
+# -----------------------------------------------------------------------------
+# Homestead / Vagrant
+# -----------------------------------------------------------------------------
+Homestead.json
+Homestead.yaml
+.vagrant/
+
+
+# -----------------------------------------------------------------------------
+# npm / yarn
+# -----------------------------------------------------------------------------
+npm-debug.log
+yarn-error.log
+
+
+# -----------------------------------------------------------------------------
+# Miscelánea
+# -----------------------------------------------------------------------------
+*.cache
+*.tmp
+*.swp
+*.swo
+*.bak
