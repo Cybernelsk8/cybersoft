@@ -325,6 +325,49 @@ trait Searchable
             return;
         }
 
+        // Campos accesores usan los campos reales del accessorMap
+        if ($this->isAccessorField($field)) {
+            $accessorMap = $this->accessorMap ?? [];
+
+            if (isset($accessorMap[$field])) {
+                $fields = $accessorMap[$field];
+                $table  = $this->getTable();
+                $method = $boolean === 'or' ? 'orWhere' : 'where';
+
+                $query->$method(function ($q) use ($fields, $operator, $value, $table) {
+                    foreach ($fields as $realField) {
+                        if (Str::contains($realField, '.')) {
+                            $this->applyRelationFilter($q, $realField, $operator, $value, 'or');
+                        } else {
+                            $this->applyStandardFilter($q, "{$table}.{$realField}", $operator, $value, 'or');
+                        }
+                    }
+
+                    // Si el operador es like o = también buscar en la concatenación
+                    if (in_array($operator, ['like', 'not like', '=']) ) {
+                        $localFields = collect($fields)
+                            ->filter(fn($f) => !Str::contains($f, '.'))
+                            ->values();
+
+                        if ($localFields->count() >= 2) {
+                            $concatParts = $localFields
+                                ->map(fn($f) => "{$table}.{$f}")
+                                ->implode(", ' ', ");
+
+                            $concatValue = $this->normalizeTerm($value);
+
+                            $q->orWhere(
+                                DB::raw("LOWER(CONCAT({$concatParts}))"),
+                                $operator === '=' ? 'LIKE' : $operator,
+                                $operator === '=' ? "%{$concatValue}%" : $concatValue
+                            );
+                        }
+                    }
+                });
+            }
+            return;
+        }
+
         Str::contains($field, '.')
             ? $this->applyRelationFilter($query, $field, $operator, $value, $boolean)
             : $this->applyStandardFilter($query, $field, $operator, $value, $boolean);

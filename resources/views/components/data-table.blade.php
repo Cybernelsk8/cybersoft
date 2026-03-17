@@ -282,7 +282,7 @@
                                 @endphp
                                 <flux:table.cell 
                                     title="{{ data_get($rowData, $columnIndex, '') }}"
-                                    align="{{ $rowLoop->last ? 'center' : ($header['align'] ?? 'start') }}"
+                                    align="{{ $loop->last ? 'center' : ($header['align'] ?? 'start') }}"
                                     width="{{ $header['width'] ?? null }}">
                                     <div class="px-2">
                                         @if($slot)

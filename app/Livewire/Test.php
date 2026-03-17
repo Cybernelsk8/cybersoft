@@ -2,7 +2,7 @@
 
 namespace App\Livewire;
 
-use App\Models\User;
+use App\Models\Admin\User;
 use App\Traits\DataTable;
 use Livewire\Component;
 use Livewire\Attributes\Computed;
