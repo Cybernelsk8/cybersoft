@@ -26,9 +26,6 @@ class User extends Authenticatable
         HasRoles,
         SoftDeletes;
 
-    protected array $accessorMap = [
-        'full_name' => ['name', 'lastname'],
-    ];
 
     /**
      * The attributes that are mass assignable.
@@ -36,8 +33,6 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
-        'lastname',
         'email',
         'password',
     ];
@@ -66,13 +61,11 @@ class User extends Authenticatable
         ];
     }
 
-    protected $appends = ['full_name'];
-
     /**
      * Get the user's initials
      */
     public function initials(): string{
-        return Str::of($this->name)
+        return Str::of($this->user_information?->nombre_completo)
             ->explode(' ')
             ->take(2)
             ->map(fn ($word) => Str::substr($word, 0, 1))
@@ -124,8 +117,8 @@ class User extends Authenticatable
         return $menu->values()->all();
     }
 
-    public function getFullNameAttribute(): string {
-        return trim("{$this->name} {$this->lastname}");
+    public function user_information() {
+        return $this->hasOne(UserInformation::class);
     }
 
     public function posts() {

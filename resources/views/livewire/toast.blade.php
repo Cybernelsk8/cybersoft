@@ -31,6 +31,7 @@
             <flux:callout
                 variant="secondary" 
                 :dismissible="$toast['dismissible']"
+                class="border border-{{ $toast['variant'] }}-500"
             >
                 <x-slot name="icon">
                     @if($toast['icon'])
