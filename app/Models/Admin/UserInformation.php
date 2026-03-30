@@ -16,6 +16,7 @@ class UserInformation extends Model
         'nombres',
         'apellidos',
         'fecha_nacimiento',
+        'sexo',
         'cui',
         'telefono',
         'email',
@@ -26,11 +27,14 @@ class UserInformation extends Model
         'user_id',
     ];
 
-    protected array $accessorMap = [
-        'nombre_completo' => ['nombres', 'apellidos'],
-    ];
-
-    protected $appens = ['nombre_completo'];
+    
+    protected $appends = ['nombre_completo', 'nombre_corto'];
+    
+    public function getAccessorMap() {
+        return [
+            'nombre_completo' => ['nombres', 'apellidos'],
+        ];
+    }
 
     public function user() {
         return $this->belongsTo(User::class)->withTrashed();
@@ -38,6 +42,17 @@ class UserInformation extends Model
 
     public function municipio() {
         return $this->belongsTo(Municipio::class);
+    }
+
+    public function getNombreCortoAttribute() {
+
+        $prepositions = ['de', 'del', 'la', 'los', 'las'];
+
+        $nombres = explode(" ", $this->nombres)[0];
+        $apellidos = str_replace($prepositions,"", $this->apellidos);
+        $apellidos = explode(" ",$apellidos)[0];
+
+        return $nombres.' '.$apellidos;
     }
 
     public function getNombreCompletoAttribute(): string {

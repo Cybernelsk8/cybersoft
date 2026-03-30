@@ -1,5 +1,6 @@
 <section class="w-full">
-     
+    
+    @can('admin.users.store')
     <div class="flex justify-center mb-4">
         <flux:modal.trigger name="newUser">
             <flux:button 
@@ -10,7 +11,9 @@
             </flux:button>
         </flux:modal.trigger>
     </div>
+    @endcan
     
+    @can('page.view.users')
     <x-data-table :headers="$this->headers" :rows="$this->rows">
         @interact('nombre_completo', $row)
             <div class="flex items-center gap-3">
@@ -58,36 +61,39 @@
                     variant="ghost" 
                 />
                 <flux:menu>
-                   
-                    <flux:menu.item 
-                        icon="pencil-square"
-                        :href="route('admin.users.show', $row->id)" 
-                        wire:navigate >
-                        Editar
-                    </flux:menu.item>
-                
-                    @if ($row->user->deleted_at)
+                    @can('admin.users.update')
                         <flux:menu.item 
-                            variant="danger" 
-                            icon="check-circle"
-                            wire:click="userRestore({{ $row->id }})" >
-                            Restaurar
+                            icon="pencil-square"
+                            :href="route('admin.users.show', $row->id)" 
+                            wire:navigate >
+                            Editar
                         </flux:menu.item>
-                    @endif
-
-                    @if (!$row->user->deleted_at)
-                        <flux:menu.item 
-                            variant="danger" 
-                            icon="trash"
-                            wire:click="delete({{ $row->id }})" >
-                            Eliminar
-                        </flux:menu.item>
-                    @endif
-                    
+                    @endcan
+                    @can('admin.users.restore')
+                        @if ($row->user->deleted_at)
+                            <flux:menu.item 
+                                variant="danger" 
+                                icon="check-circle"
+                                wire:click="userRestore({{ $row->id }})" >
+                                Restaurar
+                            </flux:menu.item>
+                        @endif
+                    @endcan
+                    @can('admin.users.delete')                        
+                        @if (!$row->user->deleted_at)
+                            <flux:menu.item 
+                                variant="danger" 
+                                icon="trash"
+                                wire:click="delete({{ $row->id }})" >
+                                Eliminar
+                            </flux:menu.item>
+                        @endif
+                    @endcan
                 </flux:menu>
             </flux:dropdown>
         @endinteract
     </x-data-table>
+    @endcan
     
 
     <flux:modal name="newUser" flyout @close="resetData">
@@ -219,9 +225,9 @@
                 <div class="col-span-6 sm:col-span-3">
                     <flux:select 
                         label="Roles" 
-                        wire:model.live="user.role"
-                        placeholder="Selecciona un rol">
-                        @forelse ($roles as $role)
+                        wire:model.live="user.role">
+                        <flux:select.option value=""> --Seleccione rol --</flux:select.option>
+                        @forelse ($all_roles as $role)
                             <flux:select.option>
                                 {{ $role->name }}
                             </flux:select.option>                        

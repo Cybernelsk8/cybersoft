@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\Admin\User;
+use App\Models\Admin\UserInformation;
 use App\Traits\DataTable;
 use Livewire\Component;
 use Livewire\Attributes\Computed;
@@ -36,7 +37,7 @@ class Test extends Component
 
     #[Computed]
     public function searchResults() {
-        return User::all();
+        return UserInformation::all();
     }
 
     public function render() {

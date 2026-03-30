@@ -89,7 +89,20 @@ trait DataTable
     protected function processFilters(): array {
         return collect($this->filters)
             ->filter(function ($filter) {
-                return !empty($filter['field']) && !empty($filter['operator']);
+                $operator = strtolower($filter['operator'] ?? '');
+
+                if (empty($filter['field']) || empty($operator)) {
+                    return false;
+                }
+
+                // Operadores que no requieren valor
+                $noValueOperators = ['null', 'not null'];
+                if (in_array($operator, $noValueOperators)) {
+                    return true;
+                }
+
+                // Los demás operadores requieren valor no vacío
+                return isset($filter['value']) && $filter['value'] !== '';
             })
             ->map(function ($filter) {
                 $operator = strtolower($filter['operator']);

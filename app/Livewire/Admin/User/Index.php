@@ -11,8 +11,11 @@ use Flux\Flux;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Title;
 use Livewire\Component;
 use Spatie\Permission\Models\Role;
+
+#[Title('Usuarios')]
 
 class Index extends Component
 {
@@ -22,7 +25,7 @@ class Index extends Component
         [ 'index' => 'id', 'label' => '#', 'align' => 'center' ],
         [ 'index' => 'nombre_completo', 'label' => 'User', ],
         [ 'index' => 'cui', 'label' => 'Cui', ],
-        [ 'index' => 'user.roles.name', 'label' => 'Role', 'exclude' => true ],
+        [ 'index' => 'user.role', 'label' => 'Role', 'exclude' => true ],
         [ 'index' => 'user.deleted_at', 'label' => 'Active', 'align' => 'center' ],
         [ 'index' => 'actions', 'label' => '']
     ];
@@ -30,25 +33,22 @@ class Index extends Component
     public array $user = [];
     public array $departamentos = [];
     public int $departamento_id = 7;
-    public array $roles = [];
 
     public function mount() {
         $this->departamentos = DB::table('departamentos')->orderBy('nombre')->get()->toArray();
-        $this->roles = Role::orderBy('name')->get()->toArray();
     }
 
     public function render() {
-
         $municipios = Municipio::where('departamento_id',$this->departamento_id)
         ->orderBy('nombre')
         ->get();
-
-        return view('livewire.admin.user.index',compact('municipios'));
+        $all_roles = Role::orderBy('name')->get();
+        return view('livewire.admin.user.index',compact('municipios','all_roles'));
     }
 
     #[Computed]
     public function rows() {
-        return UserInformation::with(['municipio', 'user.roles'])
+        return UserInformation::with(['municipio', 'user'])
         ->filterAdvance($this->headers, [
             'search' => $this->search,
             'sort' => [
@@ -60,6 +60,9 @@ class Index extends Component
     }
 
     public function store() {
+
+        $this->authorize('admin.users.store');
+
         $this->validate([
             'user.nombres' => 'required|string|max:255',
             'user.apellidos' => 'required|string|max:255',
@@ -85,10 +88,10 @@ class Index extends Component
                 ]);
 
                 UserInformation::create([
-                    'nombres' => ucwords(mb_strtolower($this->user['nombres'])),
-                    'apellidos' => ucwords(mb_strtolower($this->user['apellidos'])),
+                    'nombres' => ucwords(mb_strtolower(trim($this->user['nombres']))),
+                    'apellidos' => ucwords(mb_strtolower(trim($this->user['apellidos']))),
                     'fecha_nacimiento' => $this->user['fecha_nacimiento'],
-                    'cui' => $this->user['cui'],
+                    'cui' => trim($this->user['cui']),
                     'telefono' => str_replace("-","",$this->user['telefono']),
                     'email' => mb_strtolower($this->user['email']),
                     'municipio_id' => $this->user['municipio_id'],
@@ -123,6 +126,7 @@ class Index extends Component
     }
 
     public function restore() {
+        $this->authorize('admin.users.restore');
         $user = User::withTrashed()->findOrFail($this->user['id']);
         $user->restore();
         $this->toastSuccess('Usuario restaurado correctamente.');
@@ -136,12 +140,10 @@ class Index extends Component
     }
 
     public function destroy() {
+        $this->authorize('admin.users.delete');
         $user = User::withTrashed()->findOrFail($this->user['user_id']);
-        $user->delete();
-
-        
+        $user->delete();      
         $this->toastSuccess('Usuario eliminado correctamente.');
-
         $this->resetData();
     }
 

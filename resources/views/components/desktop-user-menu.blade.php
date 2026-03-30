@@ -1,6 +1,6 @@
 <flux:dropdown position="bottom" align="start">
     <flux:sidebar.profile
-        :name="auth()->user()->name"
+        :name="auth()->user()->user_information->nombre_corto"
         :initials="auth()->user()->initials()"
         icon:trailing="chevrons-up-down"
         data-test="sidebar-menu-button"
@@ -9,16 +9,21 @@
     <flux:menu>
         <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
             <flux:avatar
-                :name="auth()->user()->name"
+                :name="auth()->user()->user_information->nombre_corto"
                 :initials="auth()->user()->initials()"
             />
             <div class="grid flex-1 text-start text-sm leading-tight">
-                <flux:heading class="truncate">{{ auth()->user()->name }}</flux:heading>
+                <flux:heading class="truncate">{{ auth()->user()->user_information->nombre_corto }}</flux:heading>
                 <flux:text class="truncate">{{ auth()->user()->email }}</flux:text>
             </div>
         </div>
         <flux:menu.separator />
         <flux:menu.radio.group>
+            <flux:radio.group x-data variant="segmented" x-model="$flux.appearance">
+                <flux:radio value="light" icon="sun"></flux:radio>
+                <flux:radio value="dark" icon="moon"></flux:radio>
+                <flux:radio value="system" icon="computer-desktop"></flux:radio>
+            </flux:radio.group>
             <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
                 {{ __('Settings') }}
             </flux:menu.item>

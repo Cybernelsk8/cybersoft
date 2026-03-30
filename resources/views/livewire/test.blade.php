@@ -3,7 +3,7 @@
         wire:model.live="seleccion"
         :options="$this->searchResults"
         option-value="id"
-        option-label="name"
+        option-label="nombre_completo"
         label="Selecciona una opción"
         placeholder="Selecciona una opción"
         searchable

@@ -56,7 +56,7 @@ trait Charts
             ->series($series)
             ->labels($labels)
             ->set('plotOptions.bar.horizontal', false)
-            ->set('plotOptions.bar.borderRadius', 6);
+            ->set('plotOptions.bar.borderRadius', 3);
     }
 
     /**
@@ -86,6 +86,13 @@ trait Charts
     public function donutChart(array $series, array $labels): Chart
     {
         return Chart::make('donut')
+            ->series($series)
+            ->labels($labels);
+    }
+
+    public function pieChart(array $series, array $labels): Chart
+    {
+        return Chart::make('pie')
             ->series($series)
             ->labels($labels);
     }

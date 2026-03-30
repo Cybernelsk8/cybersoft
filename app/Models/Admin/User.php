@@ -49,6 +49,8 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    protected $appends = ['role'];
+
     /**
      * Get the attributes that should be cast.
      *
@@ -65,7 +67,7 @@ class User extends Authenticatable
      * Get the user's initials
      */
     public function initials(): string{
-        return Str::of($this->user_information?->nombre_completo)
+        return Str::of($this->user_information?->nombre_corto)
             ->explode(' ')
             ->take(2)
             ->map(fn ($word) => Str::substr($word, 0, 1))
@@ -115,6 +117,10 @@ class User extends Authenticatable
         });
 
         return $menu->values()->all();
+    }
+
+    public function getRoleAttribute() {
+        return $this->roles[0]?->name ?? null;
     }
 
     public function user_information() {

@@ -52,20 +52,17 @@ class Chart
         ];
     }
 
-    public static function make(string $type = 'line'): self
-    {
+    public static function make(string $type = 'line'): self {
         return new self($type);
     }
 
-    public function series(array $series): self
-    {
+    public function series(array $series): self {
         $clone = clone $this;
         $clone->options['series'] = $series;
         return $clone;
     }
 
-    public function labels(array $labels): self
-    {
+    public function labels(array $labels): self {
         $clone = clone $this;
 
         if (in_array($clone->options['chart']['type'], ['donut', 'pie', 'radialBar'])) {
@@ -77,8 +74,7 @@ class Chart
         return $clone;
     }
 
-    public function set(string $key, mixed $value): self
-    {
+    public function set(string $key, mixed $value): self {
         $clone = clone $this;
         data_set($clone->options, $key, $value);
         return $clone;
@@ -94,10 +90,15 @@ class Chart
      * Presets disponibles: 'currency', 'percent', 'compact'
      * O una expresión JS personalizada: 'val => "$ " + val.toLocaleString()'
      */
-    public function formatter(string $jsExpressionOrPreset): self
-    {
+    public function formatter(string $jsExpressionOrPreset): self {
         $clone = clone $this;
         $clone->formatter = $jsExpressionOrPreset;
+        return $clone;
+    }
+
+    public function legendFormatter(string $jsExpression): self {
+        $clone = clone $this;
+        $clone->options['__legend_formatter'] = $jsExpression;
         return $clone;
     }
 
@@ -110,8 +111,7 @@ class Chart
      *   ->colors('warm')
      *   ->colors(['#ff0000', '#00ff00', '#0000ff'])
      */
-    public function colors(string|array $colors): self
-    {
+    public function colors(string|array $colors): self {
         if (is_string($colors)) {
             if (!array_key_exists($colors, self::COLOR_SCHEMES)) {
                 throw new \InvalidArgumentException(
@@ -131,8 +131,7 @@ class Chart
      *   ->height(350)
      *   ->height('100%')
      */
-    public function height(int|string $value): self
-    {
+    public function height(int|string $value): self {
         return $this->set('chart.height', $value);
     }
 
@@ -143,21 +142,18 @@ class Chart
      *   ->width(600)
      *   ->width('100%')
      */
-    public function width(int|string $value): self
-    {
+    public function width(int|string $value): self {
         return $this->set('chart.width', $value);
     }
 
     /**
      * Muestra u oculta la toolbar del chart.
      */
-    public function toolbar(bool $show = true): self
-    {
+    public function toolbar(bool $show = true): self {
         return $this->set('chart.toolbar.show', $show);
     }
 
-    public function addGoal(int $value, string $label, string $color = '#ef4444'): self
-    {
+    public function addGoal(int $value, string $label, string $color = '#ef4444'): self {
         $clone = clone $this;
         $clone->options['annotations']['yaxis'][] = [
             'y'           => $value,
@@ -170,8 +166,7 @@ class Chart
         return $clone;
     }
 
-    public function addGoals(array $goals): self
-    {
+    public function addGoals(array $goals): self {
         $clone = clone $this;
         foreach ($goals as $goal) {
             $clone->options['annotations']['yaxis'][] = [
@@ -189,15 +184,13 @@ class Chart
         return $clone;
     }
 
-    public function group(string $name): self
-    {
+    public function group(string $name): self {
         $clone = clone $this;
         $clone->options['chart']['group'] = $name;
         return $clone;
     }
 
-    public function build(): array
-    {
+    public function build(): array {
         $opts = $this->options;
 
         if ($this->formatter !== null) {

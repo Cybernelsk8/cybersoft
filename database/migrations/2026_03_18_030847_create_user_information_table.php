@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('nombres', 100);
             $table->string('apellidos', 100);
             $table->date('fecha_nacimiento');
+            $table->enum('sexo',['M','F']);
             $table->string('cui', 13)->nullable()->unique();
             $table->string('telefono', 8);
             $table->string('email', 50)->nullable()->unique();

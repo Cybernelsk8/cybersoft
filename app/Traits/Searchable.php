@@ -4,7 +4,6 @@ namespace App\Traits;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -12,61 +11,56 @@ trait Searchable
 {
     /**
      * Aplica filtro avanzado con headers dinámicos
-     * 
+     *
      * USO: User::filterAdvance($headers, ['search' => 'texto', 'sort' => ['field' => 'id', 'direction' => 'asc']])
      */
-    public function scopeFilterAdvance(Builder $query, array $headers, array $params = []): Builder {
-        // 1. Preparar parámetros
-        $search = $params['search'] ?? $params['q'] ?? '';
+    public function scopeFilterAdvance(Builder $query, array $headers, array $params = []): Builder
+    {
+        $search  = $params['search'] ?? $params['q'] ?? '';
         $filters = $params['filters'] ?? [];
-        $sort = $params['sort'] ?? [];
-        
-        // 2. Extraer campos buscables de headers
+        $sort    = $params['sort'] ?? [];
+
         $searchableFields = $this->extractSearchableFieldsFromHeaders($headers);
-        
-        // 3. Aplicar búsqueda si existe término
+
         if (!empty($search) && !empty($searchableFields)) {
             $query = $this->applyHeaderBasedSearch($query, $search, $searchableFields);
         }
-        
-        // 4. Aplicar filtros adicionales
+
         if (!empty($filters)) {
             $query = $this->applyFilters($query, $filters);
         }
-        
-        // 5. Aplicar ordenamiento
+
         if (!empty($sort)) {
-            $field = $sort['field'] ?? $sort['column'] ?? null;
+            $field     = $sort['field'] ?? $sort['column'] ?? null;
             $direction = $sort['direction'] ?? $sort['dir'] ?? 'asc';
-            
+
             if ($field && in_array($field, $this->getIndexesFromHeaders($headers))) {
                 $query = $this->applySorting($query, [
-                    'field' => $field,
-                    'direction' => $direction
+                    'field'     => $field,
+                    'direction' => $direction,
                 ]);
             }
         }
-        
-        // 6. Aplicar eager loading automático para relaciones usadas
+
         $eagerLoads = $this->getEagerLoadsFromHeaders($headers);
         if (!empty($eagerLoads)) {
             $query->with($eagerLoads);
         }
 
-        // 7. Aplicar withCount automático para columnas _count
         $withCounts = $this->getWithCountFromHeaders($headers);
         if (!empty($withCounts)) {
             $query->withCount($withCounts);
         }
-        
+
         return $query;
     }
-    
+
     /**
      * Extrae campos buscables de los headers
-     * Ignora: actions, checkbox, action, options
+     * Ignora: actions, checkbox, action, options, selection, active y campos _count
      */
-    protected function extractSearchableFieldsFromHeaders(array $headers): array {
+    protected function extractSearchableFieldsFromHeaders(array $headers): array
+    {
         $excludedIndexes = ['actions', 'checkbox', 'action', 'options', 'selection', 'active'];
 
         return collect($headers)
@@ -81,7 +75,11 @@ trait Searchable
             ->toArray();
     }
 
-    protected function getWithCountFromHeaders(array $headers): array {
+    /**
+     * Extrae relaciones para withCount desde headers con convención _count
+     */
+    protected function getWithCountFromHeaders(array $headers): array
+    {
         return collect($headers)
             ->pluck('index')
             ->filter(fn($index) => str_ends_with($index, '_count'))
@@ -91,67 +89,120 @@ trait Searchable
             ->toArray();
     }
 
-    
     /**
      * Búsqueda basada en headers
      */
-    protected function applyHeaderBasedSearch(Builder $query, string $search, array $searchableFields): Builder {
+    protected function applyHeaderBasedSearch(Builder $query, string $search, array $searchableFields): Builder
+    {
         $normalizedSearch = $this->normalizeTerm($search);
-        
+
         return $query->where(function ($q) use ($searchableFields, $normalizedSearch) {
             foreach ($searchableFields as $field) {
                 $this->applySmartFieldSearch($q, $field, $normalizedSearch);
             }
         });
     }
-    
+
     /**
      * Aplica búsqueda inteligente según tipo de campo
      */
-    protected function applySmartFieldSearch(Builder $query, string $field, string $term): void {
-        // 1. Si es una relación (contiene punto)
+    protected function applySmartFieldSearch(Builder $query, string $field, string $term): void
+    {
         if (Str::contains($field, '.')) {
             $this->applyRelationSearch($query, $field, $term);
-        }
-        // 2. Si es un accesor (no existe en BD pero sí en modelo)
-        elseif ($this->isAccessorField($field)) {
+        } elseif ($this->isAccessorField($field)) {
             $this->applyAccessorSearch($query, $field, $term);
-        }
-        // 3. Campo local normal
-        else {
+        } else {
             $fieldWithAlias = $this->resolveFieldWithAlias($query, $field);
             $query->orWhere(DB::raw("LOWER({$fieldWithAlias})"), 'LIKE', "%{$term}%");
         }
     }
-    
+
     /**
-     * Búsqueda en relaciones (supporta anidamiento: 'relation.field' o 'relation.subrelation.field')
+     * Búsqueda en relaciones — soporta anidamiento y accesores en modelos relacionados
      */
-    protected function applyRelationSearch(Builder $query, string $fieldPath, string $term): void {
-        $parts = explode('.', $fieldPath);
-        $column = array_pop($parts); // último elemento es la columna
-        $relationPath = implode('.', $parts); // resto es la relación
-        
-        $query->orWhereHas($relationPath, function ($q) use ($column, $term) {
-            $q->where(DB::raw("LOWER({$column})"), 'LIKE', "%{$term}%");
+    protected function applyRelationSearch(Builder $query, string $fieldPath, string $term): void
+    {
+        $parts        = explode('.', $fieldPath);
+        $column       = array_pop($parts);
+        $relationPath = implode('.', $parts);
+
+        $relatedModel   = $this->resolveRelatedModel($parts);
+        $accessorMethod = 'get' . Str::studly($column) . 'Attribute';
+        $isAccessor     = $relatedModel && (
+                            method_exists($relatedModel, $accessorMethod) ||
+                            in_array($column, $relatedModel->appends ?? [])
+                          );
+
+        $accessorMap  = ($relatedModel && method_exists($relatedModel, 'getAccessorMap'))
+                        ? $relatedModel->getAccessorMap()
+                        : [];
+
+        $relatedTable = $relatedModel ? $relatedModel->getTable() : null;
+
+        $query->orWhereHas($relationPath, function ($q) use ($column, $term, $isAccessor, $accessorMap, $relatedTable) {
+            if ($isAccessor && isset($accessorMap[$column]) && $relatedTable) {
+                $fields = $accessorMap[$column];
+
+                $q->where(function ($subQ) use ($fields, $term, $relatedTable) {
+                    foreach ($fields as $realField) {
+                        if (!Str::contains($realField, '.')) {
+                            $subQ->orWhere(DB::raw("LOWER({$relatedTable}.{$realField})"), 'LIKE', "%{$term}%");
+                        }
+                    }
+
+                    $localFields = collect($fields)
+                        ->filter(fn($f) => !Str::contains($f, '.'))
+                        ->values();
+
+                    if ($localFields->count() >= 2) {
+                        $concatParts = $localFields
+                            ->map(fn($f) => "{$relatedTable}.{$f}")
+                            ->implode(", ' ', ");
+
+                        $subQ->orWhere(DB::raw("LOWER(CONCAT({$concatParts}))"), 'LIKE', "%{$term}%");
+                    }
+                });
+            } else {
+                $q->where(DB::raw("LOWER({$relatedTable}.{$column})"), 'LIKE', "%{$term}%");
+            }
         });
     }
-    
+
     /**
-     * Búsqueda en accesores (ej: 'full_name' busca en 'first_name' y 'last_name')
+     * Resuelve el modelo relacionado navegando la cadena de relaciones
      */
-    protected function applyAccessorSearch(Builder $query, string $field, string $term): void {
-        $accessorMap = $this->accessorMap ?? [];
+    protected function resolveRelatedModel(array $relationParts): ?object
+    {
+        try {
+            $model = $this;
+
+            foreach ($relationParts as $relationName) {
+                $relation = $model->$relationName();
+                $model    = $relation->getRelated();
+            }
+
+            return $model;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Búsqueda en accesores del modelo base
+     */
+    protected function applyAccessorSearch(Builder $query, string $field, string $term): void
+    {
+        $accessorMap = method_exists($this, 'getAccessorMap') ? $this->getAccessorMap() : [];
 
         if (!isset($accessorMap[$field])) {
             return;
         }
 
         $fields = $accessorMap[$field];
-        $table = $this->getTable();
+        $table  = $this->getTable();
 
         $query->orWhere(function ($q) use ($fields, $term, $table) {
-            // Búsqueda individual por cada campo
             foreach ($fields as $realField) {
                 if (Str::contains($realField, '.')) {
                     $this->applyRelationSearch($q, $realField, $term);
@@ -161,8 +212,9 @@ trait Searchable
                 }
             }
 
-            // Búsqueda concatenada cuando todos los campos son locales (sin relaciones)
-            $localFields = collect($fields)->filter(fn($f) => !Str::contains($f, '.'))->values();
+            $localFields = collect($fields)
+                ->filter(fn($f) => !Str::contains($f, '.'))
+                ->values();
 
             if ($localFields->count() >= 2) {
                 $concatParts = $localFields
@@ -173,25 +225,26 @@ trait Searchable
             }
         });
     }
-    
+
     /**
      * Verifica si un campo es un accesor del modelo
      */
-    protected function isAccessorField(string $field): bool {
-        // Método 1: Verificar si existe método get{Field}Attribute
+    protected function isAccessorField(string $field): bool
+    {
         $accessorMethod = 'get' . Str::studly($field) . 'Attribute';
+
         if (method_exists($this, $accessorMethod)) {
             return true;
         }
-        
-        // Método 2: Verificar si está en $appends
+
         return in_array($field, $this->appends ?? []);
     }
-    
+
     /**
-     * Obtiene relaciones para eager loading desde headers
+     * Obtiene relaciones para eager loading desde headers con notación de punto
      */
-    protected function getEagerLoadsFromHeaders(array $headers): array {
+    protected function getEagerLoadsFromHeaders(array $headers): array
+    {
         return collect($headers)
             ->pluck('index')
             ->filter(fn($index) => Str::contains($index, '.'))
@@ -200,42 +253,46 @@ trait Searchable
             ->values()
             ->toArray();
     }
-    
+
     /**
      * Obtiene todos los índices de los headers
      */
-    protected function getIndexesFromHeaders(array $headers): array {
+    protected function getIndexesFromHeaders(array $headers): array
+    {
         return collect($headers)->pluck('index')->toArray();
     }
-    
+
     /**
-     * Normaliza término de búsqueda
+     * Normaliza término de búsqueda a minúsculas sin espacios extra
      */
-    protected function normalizeTerm($term) {
+    protected function normalizeTerm($term)
+    {
         if (is_array($term)) {
             return array_map(fn($t) => mb_strtolower(trim($t), 'UTF-8'), $term);
         }
+
         return is_string($term) ? mb_strtolower(trim($term), 'UTF-8') : $term;
     }
-    
+
     /**
-     * Resuelve alias de campo con tabla
+     * Resuelve el alias de tabla para un campo
      */
-    protected function resolveFieldWithAlias(Builder $query, string $field): string {
+    protected function resolveFieldWithAlias(Builder $query, string $field): string
+    {
         if (Str::contains($field, '.')) {
             return $field;
         }
+
         $table = $query->getModel()->getTable();
+
         return "{$table}.{$field}";
     }
-    
-    // ==================== MÉTODOS EXISTENTES DEL TRAIT ORIGINAL ====================
-    
-    /**
-     * Apply advanced filtering to the query.
-     */
 
-    protected function applySorting(Builder $query, array $sort): Builder {
+    /**
+     * Aplica ordenamiento — soporta campos locales, relaciones y accesores
+     */
+    protected function applySorting(Builder $query, array $sort): Builder
+    {
         $field     = $sort['field'] ?? null;
         $direction = strtolower($sort['direction'] ?? 'asc');
 
@@ -243,9 +300,8 @@ trait Searchable
 
         $direction = in_array($direction, ['asc', 'desc']) ? $direction : 'asc';
 
-        // Si es un accesor, ordenar por el primer campo real del accessorMap
         if ($this->isAccessorField($field)) {
-            $accessorMap = $this->accessorMap ?? [];
+            $accessorMap = method_exists($this, 'getAccessorMap') ? $this->getAccessorMap() : [];
 
             if (isset($accessorMap[$field])) {
                 $localFields = collect($accessorMap[$field])
@@ -260,7 +316,6 @@ trait Searchable
                 }
             }
 
-            // Si es accesor pero no tiene mapa definido, ignorar el ordenamiento
             return $query;
         }
 
@@ -268,48 +323,70 @@ trait Searchable
             ? $this->applyRelationSort($query, $field, $direction)
             : $query->orderBy($field, $direction);
     }
-    
-    protected function applyRelationSort(Builder $query, string $fieldPath, string $direction): Builder {
-        $parts = explode('.', $fieldPath);
-        $field = array_pop($parts);
-        $model = $query->getModel();
-        $baseTable = $model->getTable();
-        $select = ["{$baseTable}.*"];
+
+    /**
+     * Aplica ordenamiento por campo de relación usando LEFT JOIN
+     */
+    protected function applyRelationSort(Builder $query, string $fieldPath, string $direction): Builder
+    {
+        $parts         = explode('.', $fieldPath);
+        $field         = array_pop($parts);
+        $model         = $query->getModel();
+        $baseTable     = $model->getTable();
+        $select        = ["{$baseTable}.*"];
         $previousAlias = $baseTable;
-        
+
         foreach ($parts as $index => $relationName) {
             $relation = $model->$relationName();
-            
+
             if (!$relation) {
-                throw new \RuntimeException("Relación $relationName no existe.");
+                throw new \RuntimeException("Relación {$relationName} no existe.");
             }
-            
-            $related = $relation->getRelated();
+
+            $related      = $relation->getRelated();
             $relatedTable = $related->getTable();
-            $alias = "{$relatedTable}_rel_{$index}";
-            
+            $alias        = "{$relatedTable}_rel_{$index}";
+
             if ($relation instanceof BelongsTo) {
-                $query->leftJoin("{$relatedTable} as {$alias}", "{$previousAlias}.{$relation->getForeignKeyName()}", '=', "{$alias}.{$relation->getOwnerKeyName()}");
+                $query->leftJoin(
+                    "{$relatedTable} as {$alias}",
+                    "{$previousAlias}.{$relation->getForeignKeyName()}",
+                    '=',
+                    "{$alias}.{$relation->getOwnerKeyName()}"
+                );
             } else {
-                $query->leftJoin("{$relatedTable} as {$alias}", "{$alias}.{$relation->getForeignKeyName()}", '=', "{$previousAlias}.{$relation->getLocalKeyName()}");
+                $query->leftJoin(
+                    "{$relatedTable} as {$alias}",
+                    "{$alias}.{$relation->getForeignKeyName()}",
+                    '=',
+                    "{$previousAlias}.{$relation->getLocalKeyName()}"
+                );
             }
-            
-            $model = $related;
+
+            $model         = $related;
             $previousAlias = $alias;
         }
-        
+
         return $query->select($select)->orderBy("{$previousAlias}.{$field}", $direction);
     }
-    
-    protected function applyFilters(Builder $query, array $filters): Builder {
+
+    /**
+     * Aplica todos los filtros avanzados
+     */
+    protected function applyFilters(Builder $query, array $filters): Builder
+    {
         return $query->where(function ($q) use ($filters) {
             foreach ($filters as $filter) {
                 $this->applySingleFilter($q, $filter);
             }
         });
     }
-    
-    protected function applySingleFilter(Builder $query, array $filter): void {
+
+    /**
+     * Aplica un filtro individual — detecta _count, accesores y relaciones
+     */
+    protected function applySingleFilter(Builder $query, array $filter): void
+    {
         $field = $filter['field'] ?? null;
 
         if (!$field) return;
@@ -325,9 +402,9 @@ trait Searchable
             return;
         }
 
-        // Campos accesores usan los campos reales del accessorMap
+        // Campos accesores del modelo base
         if ($this->isAccessorField($field)) {
-            $accessorMap = $this->accessorMap ?? [];
+            $accessorMap = method_exists($this, 'getAccessorMap') ? $this->getAccessorMap() : [];
 
             if (isset($accessorMap[$field])) {
                 $fields = $accessorMap[$field];
@@ -343,8 +420,7 @@ trait Searchable
                         }
                     }
 
-                    // Si el operador es like o = también buscar en la concatenación
-                    if (in_array($operator, ['like', 'not like', '=']) ) {
+                    if (in_array($operator, ['like', 'not like', '='])) {
                         $localFields = collect($fields)
                             ->filter(fn($f) => !Str::contains($f, '.'))
                             ->values();
@@ -365,6 +441,7 @@ trait Searchable
                     }
                 });
             }
+
             return;
         }
 
@@ -372,9 +449,13 @@ trait Searchable
             ? $this->applyRelationFilter($query, $field, $operator, $value, $boolean)
             : $this->applyStandardFilter($query, $field, $operator, $value, $boolean);
     }
-    
-    protected function applyStandardFilter(Builder $query, string $field, string $operator, $value, string $boolean): void {
-        $value = $this->normalizeTerm($value);
+
+    /**
+     * Aplica un filtro estándar sobre un campo local
+     */
+    protected function applyStandardFilter(Builder $query, string $field, string $operator, $value, string $boolean): void
+    {
+        $value          = $this->normalizeTerm($value);
         $fieldWithAlias = $this->resolveFieldWithAlias($query, $field);
 
         match ($operator) {
@@ -386,8 +467,8 @@ trait Searchable
             'not between' => is_array($value) && count($value) === 2
                                 ? $query->whereNotBetween($field, $value, $boolean)
                                 : null,
-            'in'          => $query->whereIn($field, (array)$value, $boolean),
-            'not in'      => $query->whereNotIn($field, (array)$value, $boolean),
+            'in'          => $query->whereIn($field, (array) $value, $boolean),
+            'not in'      => $query->whereNotIn($field, (array) $value, $boolean),
             'like'        => $query->where(DB::raw("LOWER({$fieldWithAlias})"), 'LIKE', $value, $boolean),
             'not like'    => $query->where(DB::raw("LOWER({$fieldWithAlias})"), 'NOT LIKE', $value, $boolean),
             default       => ($this->isDateValue($value) || is_numeric($value))
@@ -396,66 +477,123 @@ trait Searchable
         };
     }
 
-    protected function isDateValue(mixed $value): bool {
+    /**
+     * Detecta si un valor es una fecha en formato estándar
+     */
+    protected function isDateValue(mixed $value): bool
+    {
         if (!is_string($value)) {
             return false;
         }
 
         return (bool) preg_match('/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/', $value);
     }
-    
-    protected function applyRelationFilter(Builder $query, string $fieldPath, string $operator, $value, string $boolean): void {
-        $parts = explode('.', $fieldPath);
-        $field = array_pop($parts);
+
+    /**
+     * Aplica un filtro sobre un campo de relación — soporta accesores en modelos relacionados
+     */
+    protected function applyRelationFilter(Builder $query, string $fieldPath, string $operator, $value, string $boolean): void
+    {
+        $parts    = explode('.', $fieldPath);
+        $field    = array_pop($parts);
         $relation = implode('.', $parts);
+
+        $relatedModel   = $this->resolveRelatedModel($parts);
+        $accessorMethod = 'get' . Str::studly($field) . 'Attribute';
+        $isAccessor     = $relatedModel && (
+                            method_exists($relatedModel, $accessorMethod) ||
+                            in_array($field, $relatedModel->appends ?? [])
+                          );
+
+        $accessorMap  = ($relatedModel && method_exists($relatedModel, 'getAccessorMap'))
+                        ? $relatedModel->getAccessorMap()
+                        : [];
+
+        $relatedTable = $relatedModel ? $relatedModel->getTable() : null;
 
         $method = $boolean === 'or' ? 'orWhereHas' : 'whereHas';
 
-        $query->$method($relation, function ($q) use ($field, $operator, $value) {
-            $fieldWithAlias = $this->resolveFieldWithAlias($q, $field);
-            $this->applyStandardFilter($q, $fieldWithAlias, $operator, $value, 'and');
+        $query->$method($relation, function ($q) use ($field, $operator, $value, $isAccessor, $accessorMap, $relatedTable) {
+            if ($isAccessor && isset($accessorMap[$field]) && $relatedTable) {
+                $fields = $accessorMap[$field];
+
+                $q->where(function ($subQ) use ($fields, $operator, $value, $relatedTable) {
+                    foreach ($fields as $realField) {
+                        if (!Str::contains($realField, '.')) {
+                            $this->applyStandardFilter($subQ, "{$relatedTable}.{$realField}", $operator, $value, 'or');
+                        }
+                    }
+
+                    if (in_array($operator, ['like', 'not like', '='])) {
+                        $localFields = collect($fields)
+                            ->filter(fn($f) => !Str::contains($f, '.'))
+                            ->values();
+
+                        if ($localFields->count() >= 2) {
+                            $concatParts = $localFields
+                                ->map(fn($f) => "{$relatedTable}.{$f}")
+                                ->implode(", ' ', ");
+
+                            $concatValue = $this->normalizeTerm($value);
+
+                            $subQ->orWhere(
+                                DB::raw("LOWER(CONCAT({$concatParts}))"),
+                                $operator === '=' ? 'LIKE' : $operator,
+                                $operator === '=' ? "%{$concatValue}%" : $concatValue
+                            );
+                        }
+                    }
+                });
+            } else {
+                $fieldWithAlias = $this->resolveFieldWithAlias($q, $field);
+                $this->applyStandardFilter($q, $fieldWithAlias, $operator, $value, 'and');
+            }
         });
     }
-    
-    protected function validateFilterParams(array $params): array{
+
+    /**
+     * Valida y normaliza parámetros de filtro
+     */
+    protected function validateFilterParams(array $params): array
+    {
         $validated = [];
-        
+
         if (!empty($params['search']['q']) || !empty($params['search']['fields'])) {
             $validated['search'] = [
-                'q' => $params['search']['q'] ?? '',
-                'fields' => array_filter($params['search']['fields'] ?? [])
+                'q'      => $params['search']['q'] ?? '',
+                'fields' => array_filter($params['search']['fields'] ?? []),
             ];
         }
-        
+
         if (!empty($params['filters']) && is_array($params['filters'])) {
             $validated['filters'] = array_values(array_filter(array_map(function ($filter) {
-                $field = $filter['field'] ?? null;
+                $field    = $filter['field'] ?? null;
                 $operator = strtolower($filter['operator'] ?? '');
-                $value = $filter['value'] ?? null;
-                $boolean = $filter['boolean'] ?? 'and';
-                
+                $value    = $filter['value'] ?? null;
+                $boolean  = $filter['boolean'] ?? 'and';
+
                 if (!$field || !$operator) return null;
-                
+
                 $validOperators = [
                     '=', '!=', '>', '<', '>=', '<=',
                     'between', 'not between', 'in', 'not in',
-                    'null', 'not null', 'like', 'not like'
+                    'null', 'not null', 'like', 'not like',
                 ];
-                
+
                 return in_array($operator, $validOperators)
                     ? compact('field', 'operator', 'value', 'boolean')
                     : null;
             }, $params['filters'])));
         }
-        
+
         if (!empty($params['sort']) && is_array($params['sort'])) {
             $validated['sort'] = [
-                'field' => $params['sort']['field'] ?? null,
-                'direction' => $params['sort']['direction'] ?? 'asc',
+                'field'       => $params['sort']['field'] ?? null,
+                'direction'   => $params['sort']['direction'] ?? 'asc',
                 'field_first' => $params['sort']['field_first'] ?? 'id',
             ];
         }
-        
+
         return $validated;
     }
 }
